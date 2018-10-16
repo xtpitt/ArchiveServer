@@ -70,7 +70,6 @@ filearchive::filearchive(int sock) {
     this->state=0;
 }
 int filearchive::createfile() {
-    int ret;
     f=fopen(filename,"r");
     if(f){//file is found
         printf("File: %s Found. Overwriting...\n", filename);
@@ -79,9 +78,17 @@ int filearchive::createfile() {
     }
     else{
         f=fopen(filename,"w");
-        printf("Creating New file: %s \n", filename);
-        this->state=1;
-        return 0;
+        if(f){
+            printf("Creating New file: %s \n", filename);
+            this->state=1;
+            return 0;
+        }
+        else{
+            printf("File Creation Failure: %s, do you have root privilege?\n", filename);
+            return -1;
+        }
+
+
     }
 
 }
@@ -176,12 +183,11 @@ int filearchive::recvfile() {
         if(read<0){
             if(errno!=EPIPE)
                 printf("%s\n", strerror(errno));
-                perror("Error receiving file from socket");
+            perror("Error receiving file from socket");
             return -1;
         }
         if(read==0){
             //other side has shutdown
-            
             this->state=3;
             close(sfd);
             fclose(f);
@@ -206,9 +212,14 @@ int filearchive::recvfile() {
 
 }
 filearchive::~filearchive() {
-    printf("Transfer Session for %s ended\n", filename);
-    if(this->state!=3)
-    	fclose(f);
+    printf("Transfer Session for %s ended", filename);
+    if(this->state!=3){
+        close(sfd);
+        fclose(f);
+        printf(" End Status abnormal\n");
+    }
+    printf("\n");
+
     printf("File Closed.\n");
     sfd=-1;
     state=-1;
