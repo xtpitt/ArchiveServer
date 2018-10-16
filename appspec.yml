@@ -1,0 +1,18 @@
+version: 0.0
+os: linux
+files:
+  - source: /
+    destination: /opt/JanusArchiveServer
+hooks:
+  BeforeInstall:
+    - location: clean.sh
+      timeout: 300
+      runas: root
+  ApplicationStart:
+    - location: start.sh
+      timeout: 3600
+      runas: root
+  ApplicationStop:
+    - location: stop.sh
+      timeout: 300
+      runas: root
