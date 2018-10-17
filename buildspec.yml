@@ -1,0 +1,52 @@
+version: 0.2
+
+#env:
+  #variables:
+     # key: "value"
+     # key: "value"
+  #parameter-store:
+     # key: "value"
+     # key: "value"
+
+phases:
+  install:
+    commands:
+       - apt-get update -y
+       - apt-get install -y build-essential
+    #finally:
+      # - command
+      # - command
+  #pre_build:
+    #commands:
+      # - command
+      # - command
+    #finally:
+      # - command
+      # - command
+  build:
+    commands:
+       - echo Build started on `date`
+       - make all
+    #finally:
+      # - command
+      # - command
+  #post_build:
+    #commands:
+      # - command
+      # - command
+    #finally:
+      # - command
+      # - command
+artifacts:
+  files:
+     - AServer.out
+     - start.sh
+     - stop.sh
+     - clean.sh
+     - appspec.yml
+  #discard-paths: yes
+  #base-directory: location
+#cache:
+  #paths:
+    # - path
+    # - path
