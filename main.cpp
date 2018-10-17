@@ -2,7 +2,7 @@
 #include <cstring>
 #include <thread>
 #include <csignal>
-#include <stdio.h>
+#include <cstdio>
 #include "tcpconnection.h"
 #define SERVERPORT 50625
 
@@ -20,22 +20,27 @@ int filexsferhandler(filearchive* fa){
     memset((char*)fn,0,FNSIZE);
     if(fa->readfilename()<0){
         printf("Error obtaining filename\n");
+        delete fa;
         return -1;
     }
     if(fa->createfile()<0){//FIXME: IN CASE FUTURE ERRORS
         printf("Error creating local file\n");
+        delete fa;
         return -1;
     }
     if(fa->readheader()<0){
         printf("Error reading first header\n");
+        delete fa;
         return -1;
     }
     if(fa->processheader()<0){
         printf("Error processing frame header\n");
+        delete fa;
         return -1;
     }
     if(fa->recvfile()<0){
         printf("Error writing local filename\n");
+        delete fa;
         return -1;
     }
     delete fa;
@@ -73,8 +78,6 @@ int main() {
         }
     }
      */
-    server.closesocket();
-    return 0;
 
 
 }
