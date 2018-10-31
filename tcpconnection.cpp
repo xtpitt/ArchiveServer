@@ -212,14 +212,13 @@ int filearchive::recvfile() {
 
 }
 filearchive::~filearchive() {
-    printf("Transfer Session for %s ended", filename);
+    printf("Transfer Session for %s ended\n", filename);
     if(this->state!=3){
         close(sfd);
-        fclose(f);
-        printf(" End Status abnormal\n");
+        if(f)
+            fclose(f);
+        printf("End Status abnormal\n");
     }
-    printf("\n");
-
     printf("File Closed.\n");
     sfd=-1;
     state=-1;
