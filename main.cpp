@@ -23,28 +23,41 @@ int filexsferhandler(filearchive* fa){
         delete fa;
         return -1;
     }
-    if(fa->createfile()<0){//FIXME: IN CASE FUTURE ERRORS
+    int filestatus=fa->createfile();
+    if(filestatus<0){//FIXME: IN CASE FUTURE ERRORS
         printf("Error creating local file\n");
         delete fa;
         return -1;
     }
-    if(fa->readheader()<0){
-        printf("Error reading first header\n");
+    else if(filestatus==0){
+        if(fa->readheader()<0){
+            printf("Error reading first header\n");
+            delete fa;
+            return -1;
+        }
+        if(fa->processheader()<0){
+            printf("Error processing frame header\n");
+            delete fa;
+            return -1;
+        }
+        if(fa->recvfile()<0){
+            printf("Error writing local filename\n");
+            delete fa;
+            return -1;
+        }
         delete fa;
-        return -1;
+        return 0;
     }
-    if(fa->processheader()<0){
-        printf("Error processing frame header\n");
+    else if(filestatus==1){
+        if(fa->recvfile()<0){
+            printf("Error writing local filename\n");
+            delete fa;
+            return -1;
+        }
         delete fa;
-        return -1;
+        return 0;
     }
-    if(fa->recvfile()<0){
-        printf("Error writing local filename\n");
-        delete fa;
-        return -1;
-    }
-    delete fa;
-    return 0;
+
 }
 int main() {
     signal(SIGPIPE, SIG_IGN);

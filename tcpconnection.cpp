@@ -72,8 +72,9 @@ filearchive::filearchive(int sock) {
 int filearchive::createfile() {
     f=fopen(filename,"r");
     if(f){//file is found
-        printf("File: %s Found. Overwriting...\n", filename);
-        f=fopen(filename,"w");
+        fclose(f);
+        printf("File: %s Found. Assume reconnection, appending at the end...\n", filename);
+        f=fopen(filename,"a");
         return 1;
     }
     else{
