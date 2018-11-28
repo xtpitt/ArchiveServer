@@ -3,11 +3,16 @@
 #include <thread>
 #include <csignal>
 #include <cstdio>
+#include <unordered_map>
+#include <string>
 #include "tcpconnection.h"
 #define SERVERPORT 50625
 
-volatile sig_atomic_t work = 1;
+using namespace std;
 
+volatile sig_atomic_t work = 1;
+unordered_map<string, int> filearchive::record_state;
+unordered_map<string, int> filearchive::record_validpivot;
 void signalbreak(int sig){
     work=0;
     printf("Break Signal Received.\n");
@@ -36,12 +41,13 @@ int filexsferhandler(filearchive* fa){
             return -1;
         }
         if(fa->processheader()<0){
-            printf("Error processing frame header\n");
+            printf("Error processing JSON header\n");
             delete fa;
             return -1;
         }
-        if(fa->recvfile()<0){
-            printf("Error writing local filename\n");
+        //if(fa->recvfile()<0){
+        if(fa->collectframe()<0){
+            printf("Error writing local file\n");
             delete fa;
             return -1;
         }
@@ -50,7 +56,7 @@ int filexsferhandler(filearchive* fa){
     }
     else if(filestatus==1){
         if(fa->recvfile()<0){
-            printf("Error writing local filename\n");
+            printf("Error dumping frames\n");
             delete fa;
             return -1;
         }
@@ -63,6 +69,7 @@ int main() {
     signal(SIGPIPE, SIG_IGN);
     signal(SIGINT,signalbreak);
     tcpsocket server;
+
     if(server.initial(SERVERPORT)<0)
         return -1;
     int newfd;

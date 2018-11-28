@@ -1,6 +1,8 @@
 //
 // Created by Xiao Ma on 8/29/18.
 //
+#define FHEADERLEN 8
+#define FRAMESIZEBYTES 2
 
 #include "tcpconnection.h"
 #include <sys/socket.h>
@@ -14,6 +16,11 @@
 #include <signal.h>
 #include <cstring>
 #include <pthread.h>
+#include <unordered_map>
+#include <string>
+using namespace std;
+
+
 
 tcpsocket::tcpsocket() {
     sockfd=-1;
@@ -68,6 +75,10 @@ void tcpsocket::closesocket() {
 filearchive::filearchive(int sock) {
     this->sfd=sock;
     this->state=0;
+    this->validpivot=0;
+}
+int updatectrlstatus(){
+
 }
 int filearchive::createfile() {
     f=fopen(filename,"r");
@@ -99,7 +110,6 @@ int filearchive::processheader() {
     read=recvfrom(sfd, filebuf, sizeof(uint16_t), 0, NULL, NULL);
     if(read<=0){
         perror("Error reading file header size");
-        close(sfd);
         return -1;
     }
     uint16_t len;
@@ -110,8 +120,7 @@ int filearchive::processheader() {
     while(offset<len+sizeof(uint16_t)){
         read=recvfrom(sfd, filebuf+offset, len+sizeof(uint16_t)-offset, 0, NULL, NULL);
         if(read<=0){
-            perror("Error reading file header content");
-            close(sfd);
+            perror("Error reading JSON header content");
             return -1;
         }
         offset+=read;
@@ -120,9 +129,10 @@ int filearchive::processheader() {
     fwrite(filebuf, sizeof(char),len+sizeof(uint16_t),f);
     if(ferror(f)){
         perror("Error writing header content to destination file");
-        close(sfd);
         return -1;
     }
+    this->validpivot+=offset;
+    this->state=3;
     return 0;
 }
 
@@ -156,7 +166,8 @@ int filearchive::readheader() {
     memset(filebuf,0,BUFSIZE);
     read=recvfrom(sfd, filebuf+offset, sizeof(int), 0, NULL, NULL);
     if(read<0){
-        perror("Error reading file name");
+        perror("Error reading file name size");
+        updatectrlstatus();
         return -1;
     }
     offset+=read;
@@ -166,18 +177,26 @@ int filearchive::readheader() {
         read=recvfrom(sfd, filebuf+offset, sizeof(int)+headerlen-offset, 0, NULL, NULL);
         if(read<0){
             perror("Error reading file name");
+            updatectrlstatus();
             return -1;
         }
         offset+=read;
     }
     printf("Header size %d, content:--%s--\n",headerlen,filebuf+sizeof(int));
     fwrite((char*)filebuf+sizeof(int),1, headerlen,f);
+    if(ferror(f)){
+        perror("Error writing to file");
+        updatectrlstatus();
+        return -1;
+    }
+    this->validpivot+=headerlen;
+    this->state=2;
     return 0;
 }
 int filearchive::recvfile() {
     ssize_t read;
     ssize_t offset=0;
-    this->state=2;
+    this->state=4;
     while(1){
         memset(filebuf,0,BUFSIZE);
         read=recvfrom(sfd, filebuf, BUFSIZE, 0, NULL, NULL);
@@ -189,10 +208,10 @@ int filearchive::recvfile() {
         }
         if(read==0){
             //other side has shutdown
-            this->state=3;
+            this->state=5;
             close(sfd);
             fclose(f);
-	    printf("File Transfer %s completed, %d bytes received\n",filename, offset);
+	        printf("File Transfer %s completed, %d bytes received\n",filename, offset);
             return 0;
         }
 
@@ -212,9 +231,93 @@ int filearchive::recvfile() {
     }
 
 }
+int filearchive::collectframe() {
+    ssize_t toread=0, offset=0, base=0;
+    size_t writeoff=0;
+    size_t write=0;
+    ssize_t read;
+    size_t total=0;
+    while(1){
+        //collect frame header 8 bytes
+        memset(filebuf, 0, BUFSIZE);
+        toread=FHEADERLEN;
+        offset=0;
+        base=0;
+        while(offset<toread){
+            read=recvfrom(sfd, filebuf+base+offset, toread-offset, 0, NULL, NULL);
+            if(read<0){
+                perror("Error receiving Frame Header");
+                updatectrlstatus();
+                return -1;
+            }
+            else if(read==0){//if remote end disconnects, the transmission ends
+                this->state=5;
+                close(sfd);
+                fclose(f);
+                printf("File Transfer %s completed, %d bytes received\n",filename, total);
+                return 0;
+            }
+            offset+=read;
+        }
+        //collect frame size 2 bytes
+        base+=toread;
+        offset=0;
+        toread=FRAMESIZEBYTES;
+        while(offset<toread){
+            read=recvfrom(sfd, filebuf+base+offset, toread-offset, 0, NULL, NULL);
+            if(read<=0){
+                perror("Error receiving Frame Size");
+                updatectrlstatus();
+                return -1;
+            }
+            offset+=read;
+        }
+        uint16_t framesize;
+        memcpy(&framesize, filebuf+base, toread);
+        framesize=ntohs(framesize);
+        //collect frame
+        base+=toread;
+        offset=0;
+        toread=framesize;
+        while(offset<toread){
+            read=recvfrom(sfd, filebuf+base+offset, toread-offset, 0, NULL, NULL);
+            if(read<=0){
+                perror("Error receiving Frame Content");
+                updatectrlstatus();
+                return -1;
+            }
+            offset+=read;
+        }
+        base+=toread;
+        //write to file
+        writeoff=0;
+        write=0;
+        while(writeoff<base){
+            write=fwrite(filebuf+writeoff, sizeof(char), base-writeoff, f);
+            if(ferror(f)){
+                perror("Error writing to file");
+                updatectrlstatus();
+                return -1;
+            }
+            writeoff+=write;
+        }
+        total+=base;
+        this->validpivot+=base;
+        //printf("One Frame Processed\n");
+    }
+}
+void filearchive::updatectrlstatus(){
+    string s(this->filename);
+    if(this->state != 5){
+        record_state[s]=this->state;
+        record_validpivot[s]=this->validpivot;
+        printf("State: %d, validpivot: %d", this->state, this->validpivot);
+    }
+
+}
 filearchive::~filearchive() {
     printf("Transfer Session for %s ended\n", filename);
-    if(this->state!=3){
+    if(this->state!=5){
         close(sfd);
         if(f)
             fclose(f);
@@ -223,5 +326,4 @@ filearchive::~filearchive() {
     printf("File Closed.\n");
     sfd=-1;
     state=-1;
-
 }
